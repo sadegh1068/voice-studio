@@ -136,10 +136,13 @@ function draw() {
       + (L.dur ? `<br><span class="muted">${L.dur}s · speech ${L.speech} dB · peak ${L.peak} · noise ${L.floor}</span>` : "");
 }
 function meterLoop() { $("meter").firstElementChild.style.width = rec ? Math.max(0, Math.min(100, (level + 60) / 60 * 100)) + "%" : "0"; requestAnimationFrame(meterLoop); }
+// Screen taps are loud on a tablet mic: stop capturing the instant the finger touches Stop (the tap sound arrives
+// after that), and discard the first 150 ms after Record so its tap is not in the take either.
 async function toggleRec() {
   if (!rec) { if (ctx.state !== "running") await ctx.resume(); lastCheck = null; chunks = []; rec = true; draw(); return; }
-  await new Promise(r => setTimeout(r, 250)); rec = false;
-  const r = analyse(concat(chunks), SENTENCES[i]); chunks = [];
+  rec = false;
+  let x = concat(chunks); x = x.subarray(Math.min(x.length, Math.round(.15 * SR)));
+  const r = analyse(x, SENTENCES[i]); chunks = [];
   if (r.y) { r.blob = wav(r.y); const row = { id: sid(i), i, text: SENTENCES[i], wav: r.blob, dur: r.dur, ok: r.ok, why: r.why, peak: r.peak, speech: r.speech, floor: r.floor, sr: SR, ts: Date.now() };
     await put(row); done.set(row.id, row); }
   delete r.y; lastCheck = r; draw();
@@ -177,8 +180,8 @@ async function exportZip(onlyNew) {
 }
 
 // ---------- wiring ----------
-$("recBtn").onclick = toggleRec; $("nextBtn").onclick = () => go(i + 1); $("prevBtn").onclick = () => go(i - 1);
-$("redoBtn").onclick = () => { lastCheck = null; toggleRec(); }; $("playBtn").onclick = play;
+$("recBtn").onpointerdown = e => { e.preventDefault(); toggleRec(); }; $("nextBtn").onclick = () => go(i + 1); $("prevBtn").onclick = () => go(i - 1);
+$("redoBtn").onpointerdown = e => { e.preventDefault(); if (!rec) { lastCheck = null; toggleRec(); } }; $("playBtn").onclick = play;
 $("menuBtn").onclick = () => $("menu").showModal(); $("closeMenu").onclick = () => $("menu").close();
 $("fsz").oninput = e => { document.documentElement.style.setProperty("--fs", e.target.value + "px"); pref("vs_fs", e.target.value); };
 $("gotoFirst").onclick = () => { let k = 0; while (k < SENTENCES.length && done.has(sid(k))) k++; go(k); $("menu").close(); };
